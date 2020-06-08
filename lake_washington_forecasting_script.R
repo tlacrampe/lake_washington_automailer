@@ -50,7 +50,7 @@ lw_historic$Day = as.Date(lw_historic$Date, format = "%m/%d/%Y")
 # convert to daily max water temps
 lw_historic_daily = lw_historic %>% 
   group_by(Day) %>% 
-  summarize(peakTempC = max(Temperature..Ã‚.C.))
+  summarize(peakTempC = max(Temperature..Â.C.))
 
 # looks like we might be missing some days -- lets see which ones
 Day = seq(ymd('2009-01-01'), ymd('2020-06-06'), by = 'day')
@@ -78,7 +78,7 @@ lakeAirMovements = autoplot(cbind(dailyPeakAirTemps,dailyPeakLakeTemps),facets =
   theme_classic() +
   ylab("") +
   xlab("") +
-  ggtitle("Daily peak air and lake temps (degrees Celsius") +
+  ggtitle("Daily peak air and lake temps (*Celsius)") +
   labs(subtitle = "For Lake Washington", caption = "Source: King County Lake Bouy data + NOAA SEATAC weatherstation data") +
   theme(axis.text.x = element_text(size = 15),
         axis.text.y = element_text(size = 15),
@@ -96,7 +96,7 @@ lakeWindMovements = autoplot(cbind(dailyAverageWindSpeed,dailyPeakLakeTemps),fac
   theme_classic() +
   ylab("") +
   xlab("") +
-  ggtitle("Daily average wind speed (kn/h) and peak lake temps (degrees Celsius") +
+  ggtitle("Daily average wind speed (kn/h) and peak lake temps (degrees Celsius)") +
   labs(subtitle = "For Lake Washington", caption = "Source: King County Lake Bouy data + NOAA SEATAC weatherstation data") +
   theme(axis.text.x = element_text(size = 15),
         axis.text.y = element_text(size = 15),
@@ -289,7 +289,15 @@ ggsave(lakeWindMovements, filename = 'Historical Lake Washington Max Temps and A
 # creating the model we will use to forecast
 LWData = LWData[,-1]
 LWData[,'dailyPeakLakeTemps'] = na.interp(LWData[, 'dailyPeakLakeTemps'])
+
+# repeating the training + forecasting for the previous week's data
+training_data_old = window(LWData, start = c(2017,1))
+n = dim(training_data_old)[1]
+test_data_old = training_data_old[(n-7):n,]
+training_data_old = training_data_old[1:(n-7),]
+training_data_old = ts(training_data_old, start = c(2017,1), frequency = 365.25)
 training_data_live = window (LWData, start = c(2017,1))
+nnmodelold = nnetar(training_data_old[, 'dailyPeakLakeTemps'], xreg = training_data_old[, 'LWData.dailyPeakAirTemps'])
 nnmodellive = nnetar(training_data_live[, 'dailyPeakLakeTemps'], xreg = training_data_live[, 'LWData.dailyPeakAirTemps'])
 
 # pulling upcoming week's air temperature forecasts
@@ -299,43 +307,83 @@ tenDayData = html_text(tenDayForecasthtml)
 head(tenDayData) # looks like it works! :D
 tenDayData = as.numeric(tenDayData) # convert to celsisu
 tenDayData = (tenDayData-32) * 5/9
-#generating forecasts on the model
-lake10dayforecast = forecast(nnmodellive, h = 10, xreg = tenDayData)
+
+# generating forecasts on the models
+lastLake7dayforecast = forecast(nnmodelold, h = 7, xreg = test_data_old[, 'LWData.dailyPeakAirTemps'])
+lake7dayforecast = forecast(nnmodellive, h = 7, xreg = tenDayData)
 
 # switch from celsius to fahrenheit
-forecastChart = lake10dayforecast$mean = lake10dayforecast$mean *9/5 + 32
-png(file = "Ten Day LW Temp Forecast.png", width = 12, height = 6, res = 1080, units ='in')
-autoplot(lake10dayforecast$mean, series = '10 Day  Forecast') +
+lake7dayforecast$mean = lake7dayforecast$mean *9/5 + 32
+lastLake7dayforecast$mean = lastLake7dayforecast$mean *9/5 + 32
+
+
+# plotting the upcoming forecast
+test_data_old = ts(test_data_old, start = c(2020,(end(lastLake7dayforecast$mean)[1]-2020)*365.25-6), frequency = 365.25)
+lakeforcastchart = autoplot(test_data_old[, 'dailyPeakLakeTemps']*9/5+32, series = 'Acutal Lake Temps') +
+  autolayer(lastLake7dayforecast$mean, series = "Last-week's 7 Day Forecast") +
+  autolayer(lake7dayforecast$mean, series = 'Future 7 Day  Forecast') +
   theme_classic() +
   ylab('Daily Peak Lake Temps (Fahrenheit)') +
-  labs(subtitle = "For Lake Washington", caption = "Source: King County Lake Bouy data")
-dev.off()
+  xlab('Last Sunday to Next Sunday') +
+  labs(subtitle = "For Lake Washington", caption = "Source: King County Lake Bouy data") +
+  theme(axis.text.x = element_text(size = 30),
+        axis.text.y = element_text(size = 30),
+        axis.title.y = element_text(size = 35),
+        axis.title.x = element_text(size = 35),
+        legend.text = element_text(size = 38),
+        legend.title = element_text(size = 40),
+        strip.text.y = element_text(size = 35, face = 'bold'),
+        plot.title = element_text(size = 45),
+        plot.subtitle = element_text(size = 37, face = 'italic'),
+        plot.caption = element_text(size = 30),
+        legend.position="bottom", 
+        legend.box = "horizontal") 
+lakeforcastchart
+ggsave(lakeforcastchart, filename = 'Two-Week LW Temp Forecast.png', height = 20, width = 28, units = 'in') 
 
 # create the nice table for the forecast
-Dates = as.character(seq(Sys.Date(), by = "day", length.out = 10))
-LW_Daily_Peak_Temp = paste(as.character(round(lake10dayforecast$mean,2)), "*F")
-Lake_Washington_Temps = as.data.frame(cbind(Dates,LW_Daily_Peak_Temp))
+Dates = as.character(seq(Sys.Date(), by = "day", length.out = 7))
+Dates = str_sub(Dates,6)
+Dates = paste(Dates, "     ")
+LW_Daily_Peak_Temp_Forecast = paste(as.character(format(round(lake7dayforecast$mean,2)), nsmall = 2), "*F")
+Lake_Washington_Temps = as.data.frame(cbind(Dates,LW_Daily_Peak_Temp_Forecast[1:7]))
+Lake_Washington_Temps$LW_Actual_Temp = "TBD"
+names(Lake_Washington_Temps) = c("Dates", "LW_Daily_Peak_Temp_Forecast", "LW_Actual_Temp")
+
+# create the nice table for the previous week's forecast
+Old_Dates = as.character(seq(Sys.Date()-7, by = 'day', length.out=7))
+Old_Dates = str_sub(Old_Dates,6)
+Old_Dates = paste(Old_Dates, "     ")
+LW_Forecasted_Temps = paste(as.character(format(round(lastLake7dayforecast$mean,2)), nsmall = 2), "*F")
+LW_Actual_Temps = paste(as.character(format(round(test_data_old[, 'dailyPeakLakeTemps']*9/5+32,2)), nsmall = 2), "*F")
+Last_Week_Lake_Washington_Temps = as.data.frame(cbind(Old_Dates,cbind(LW_Forecasted_Temps,LW_Actual_Temps)))
+names(Last_Week_Lake_Washington_Temps) = c("Dates", "LW_Daily_Peak_Temp_Forecast", "LW_Actual_Temp")
+
+# combine the two tables
+Lake_Washington_Temps_Old_And_New = rbind(Last_Week_Lake_Washington_Temps[1:7,], Lake_Washington_Temps)
 
 # set up the email with the upcoming forecast
 email = compose_email(
   body = md(c("Still working on improving the front end of this--let me know your thoughts! \n",
               "Please find the upcoming peak daily Lake Washington surface temperature forecast below: \n", 
-  Lake_Washington_Temps %>% 
+  Lake_Washington_Temps_Old_And_New %>% 
     kable() %>% 
     kable_styling(bootstrap_option = "striped"),
   "\n",
-  add_image(file = "Ten Day LW Temp Forecast.png")
+  add_image(file = "Two-Week LW Temp Forecast.png")
   )
   ),
-  footer = md(
-    c("This is an automated message sent every Sunday, to request to be removed or request to add other email addresses please reach out to topherlacrampe@gmail.com \n",
-      "More information about my code and data sources can be found here: ", block_social_links(
+  footer = blocks(
+    block_text("This is an automated message sent every Sunday, to request to be removed or request to add other email addresses please reach out to topherlacrampe@gmail.com \nMore information about my code and data sources can be found here: https://github.com/tlacrampe/lake_washington_automailer"),
+    block_social_links(
+      social_link(
         service = "GitHub",
-        link = "",
+        link = "https://github.com/tlacrampe/lake_washington_automailer",
         variant = "color"
-      ) ,"\n",
-      "Email sent on ", add_readable_time(), "."
-    )
+      )),
+    block_text(paste("\n\nEmail sent on ", add_readable_time(), ".", "\nHistorical Lake Washington Surface and Air Temp (*Celsius): \n\n"
+    )),
+    add_image(file = "Historical Lake Washington Max Temps and Max Air Temps.png")
   )
 )
 # email = add_attachment(
@@ -352,7 +400,8 @@ email = compose_email(
 email %>% 
   smtp_send(
     from = "tophalacrampe@gmail.com",
-    to = c("topherlacrampe@gmail.com", "alicia.ajstar@gmail.com", 'dlacrampe@comsast.net'),
+    to = c("topherlacrampe@gmail.com"),
     subject = "LW Forecasting Temp automailer (for father's day)",
     credentials = creds_key(id="gmail")
   )
+
