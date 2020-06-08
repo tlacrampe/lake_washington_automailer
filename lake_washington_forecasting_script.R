@@ -365,7 +365,7 @@ Lake_Washington_Temps_Old_And_New = rbind(Last_Week_Lake_Washington_Temps[1:7,],
 # set up the email with the upcoming forecast
 email = compose_email(
   body = md(c("Still working on improving the front end of this--let me know your thoughts! \n",
-              "Please find the upcoming peak daily Lake Washington surface temperature forecast below: \n", 
+              "Please find the previous and upcoming daily-peak Lake Washington surface temperature forecasts below: \n", 
   Lake_Washington_Temps_Old_And_New %>% 
     kable() %>% 
     kable_styling(bootstrap_option = "striped"),
@@ -374,18 +374,27 @@ email = compose_email(
   )
   ),
   footer = blocks(
-    block_text("This is an automated message sent every Sunday, to request to be removed or request to add other email addresses please reach out to topherlacrampe@gmail.com \nMore information about my code and data sources can be found here: https://github.com/tlacrampe/lake_washington_automailer"),
+    block_text(' \n ---------------------------------------------------------------------------------------------------------------------------------------------------------'),
+    block_text("This is an automated message sent every Sunday, to request to be removed or request to add other email addresses please reach out to topherlacrampe@gmail.com"),
+    block_text("\n More information about my code and data sources can be found here: https://github.com/tlacrampe/lake_washington_automailer"),
     block_social_links(
       social_link(
         service = "GitHub",
         link = "https://github.com/tlacrampe/lake_washington_automailer",
         variant = "color"
       )),
-    block_text(paste("\n\nEmail sent on ", add_readable_time(), ".", "\nHistorical Lake Washington Surface and Air Temp (*Celsius): \n\n"
-    )),
-    add_image(file = "Historical Lake Washington Max Temps and Max Air Temps.png")
+    block_text(' \n ---------------------------------------------------------------------------------------------------------------------------------------------------------'),
+    block_text("\n \n Data sources include:"),
+    block_text("\n King County Lake Washington Surface Bouy Data: https://green2.kingcounty.gov/lake-buoy/Data.aspx"),
+    block_text("\n NOAA GHCND SEATAC Weatherstation Data: https://www.ncdc.noaa.gov/cdo-web/datasets/GHCND/stations/GHCND:USW00024233/detail"),
+    block_text("\n King5 10-Day Forecast (for generating week-ahead predictions): https://www.king5.com/10-day"),
+    block_text(' \n ---------------------------------------------------------------------------------------------------------------------------------------------------------'),
+    block_text(paste("\n \n Email sent on ", add_readable_time(), ".")),
+    block_text(' \n ---------------------------------------------------------------------------------------------------------------------------------------------------------'),
+    block_text( " \n Historical Lake Washington Surface and Air Temp (*Celsius): \n \n"),
+    add_image(file = "Historical Lake Washington Max Temps and Max Air Temps.png"))
   )
-)
+
 # email = add_attachment(
 #   email,
 #   "Ten Day LW Temp Forecast.png"
@@ -401,7 +410,7 @@ email %>%
   smtp_send(
     from = "tophalacrampe@gmail.com",
     to = c("topherlacrampe@gmail.com"),
-    subject = "LW Forecasting Temp automailer (for father's day)",
+    subject = "LW Forecasting Temp automailer (for father's day)--updated",
     credentials = creds_key(id="gmail")
   )
 
